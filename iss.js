@@ -8,6 +8,7 @@ const request = require('request');
  *   - The IP address as a string (null if error). Example: "162.245.144.188"
  */
 const fetchMyIP = function(callback) {
+  console.log("Getting IP...")
   request.get('https://api.ipify.org/?format=json', (error, response, body) => {
     if (error) {
       callback(error, null);
@@ -17,33 +18,34 @@ const fetchMyIP = function(callback) {
       callback(Error(msg), null);
       return;
     }
-    callback(null,JSON.parse(body));
+    const ip = JSON.parse(body).ip;
+    callback(null, ip);
   });
 };
 
 const fetchCoordsByIP = function(ip, callback) {
   request.get(`https://ipvigilante.com/${ip}`, (error, response, body) => {
     if (error) {
-      callback(null, error);
+      callback(error, null);
     }
     if (response.statusCode !== 200) {
       const msg = `Status Code ${response.statusCode} when fetching coordinates. Response: ${body}`;
-      callback(null, Error(msg));
+      callback(Error(msg), null);
       return;
     }
-    let newObj = {};
+    let coords = {};
+
     callback(JSON.parse(body, (key, value) => {
       if (key === "latitude" || key === "longitude") {
-        newObj[key] = value;
+        coords[key] = value;
       }
-      return newObj;
+      return coords;
     }
     ), null);
   });
 };
 
 const fetchISSFlyOverTimes = function(coords, callback) {
-  console.log(coords.latitude, coords.longitude);
   request.get(`http://api.open-notify.org/iss-pass.json?lat=${coords.latitude}&lon=${coords.longitude}`, (error, response, body) => {
     if (error) {
       callback(null, error);
@@ -53,13 +55,33 @@ const fetchISSFlyOverTimes = function(coords, callback) {
       callback(null, Error(msg));
       return;
     }
-    callback(JSON.parse(body), null);
+    const passTimes = JSON.parse(body).response;
+    callback(passTimes, null);
   });
 };
 
+const nextISSTimesForMyLocation = function(callback) {
+  fetchMyIP((error, ip) => {
+    if (error) {
+      return callback(error, null);
+    }
+    console.log("I've got the IP! Fetching Coordinates...");
+    fetchCoordsByIP(ip, (coords, error) => {
+      if (error) {
+        return callback(null, coords);
+      }
+      console.log("I've got the Coordinates! Fetching Fly-Over Times...");
+      fetchISSFlyOverTimes(coords, (error, passTimes) => {
+        if (error) {
+          return callback(null, error);
+        }
+        callback(null, passTimes);   
+      });
+    });
+  });
+};
 
 module.exports = {
-  fetchMyIP,
-  fetchCoordsByIP,
-  fetchISSFlyOverTimes
+  nextISSTimesForMyLocation
 };
+
